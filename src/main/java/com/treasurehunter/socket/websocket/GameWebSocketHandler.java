@@ -1,10 +1,11 @@
 package com.treasurehunter.socket.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.treasurehunter.socket.event.handler.SocketEventHandler;
+import com.treasurehunter.socket.constant.SocketEventConstant;
 import com.treasurehunter.socket.model.request.SocketRequestDTO;
 import com.treasurehunter.socket.event.dispatcher.SocketEventDispatcher;
-import io.micrometer.common.lang.NonNullApi;
+import com.treasurehunter.socket.state.PlayerStateRegistry;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -21,28 +22,78 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     private final Set<WebSocketSession> sessions = ConcurrentHashMap.newKeySet();
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final SocketEventDispatcher dispatcher;
+    private final PlayerStateRegistry playerStateRegistry;
 
-    public GameWebSocketHandler(SocketEventDispatcher dispatcher) {
+    public GameWebSocketHandler(
+            SocketEventDispatcher dispatcher,
+            PlayerStateRegistry playerStateRegistry
+    ) {
         this.dispatcher = dispatcher;
+        this.playerStateRegistry = playerStateRegistry;
     }
 
     @Override
-    public void afterConnectionEstablished(WebSocketSession session) {
+    public void afterConnectionEstablished(@NonNull WebSocketSession session) {
         sessions.add(session);
     }
 
     @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+    public void afterConnectionClosed(@NonNull WebSocketSession session, @NonNull CloseStatus status) {
         sessions.remove(session);
+        playerStateRegistry.removeBySession(session).ifPresent(this::broadcastPlayerLeave);
     }
 
     @Override
-    public void handleTextMessage(WebSocketSession session, TextMessage message) throws IOException {
+    public void handleTextMessage(@NonNull WebSocketSession session, @NonNull TextMessage message) throws IOException {
         SocketRequestDTO request = objectMapper.readValue(
                 message.getPayload(),
                 SocketRequestDTO.class
         );
 
         dispatcher.dispatch(session, request);
+        broadcastToOthers(session, message);
+    }
+
+    private void broadcastToOthers(WebSocketSession sender, TextMessage message) {
+        for (WebSocketSession client : sessions) {
+            if (client == sender || !client.isOpen()) {
+                continue;
+            }
+
+            try {
+                synchronized (client) {
+                    client.sendMessage(message);
+                }
+            } catch (IOException ignored) {
+                sessions.remove(client);
+            }
+        }
+    }
+
+    private void broadcastPlayerLeave(String playerId) {
+        SocketRequestDTO response = new SocketRequestDTO();
+        response.setEvent(SocketEventConstant.PLAYER_LEAVE);
+        response.setPayload(playerId);
+
+        try {
+            broadcastToAll(new TextMessage(objectMapper.writeValueAsString(response)));
+        } catch (IOException ignored) {
+        }
+    }
+
+    private void broadcastToAll(TextMessage message) {
+        for (WebSocketSession client : sessions) {
+            if (!client.isOpen()) {
+                continue;
+            }
+
+            try {
+                synchronized (client) {
+                    client.sendMessage(message);
+                }
+            } catch (IOException ignored) {
+                sessions.remove(client);
+            }
+        }
     }
 }
