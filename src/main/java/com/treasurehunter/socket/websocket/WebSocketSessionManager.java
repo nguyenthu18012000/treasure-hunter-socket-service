@@ -3,6 +3,7 @@ package com.treasurehunter.socket.websocket;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -21,5 +22,9 @@ public class WebSocketSessionManager {
 
     public void remove(String playerId) {
         playerSessions.remove(playerId);
+    }
+
+    public Collection<WebSocketSession> getAll() {
+        return playerSessions.values();
     }
 }
