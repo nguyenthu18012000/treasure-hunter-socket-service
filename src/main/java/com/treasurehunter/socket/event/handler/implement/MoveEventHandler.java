@@ -3,6 +3,7 @@ package com.treasurehunter.socket.event.handler.implement;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.treasurehunter.socket.constant.SocketEventConstant;
 import com.treasurehunter.socket.event.handler.SocketEventHandler;
+import com.treasurehunter.socket.model.movement.PlayerMovementState;
 import com.treasurehunter.socket.model.request.SocketRequestDTO;
 import com.treasurehunter.socket.state.PlayerStateRegistry;
 import lombok.extern.slf4j.Slf4j;
@@ -28,18 +29,18 @@ public class MoveEventHandler implements SocketEventHandler {
 
     @Override
     public String getEvent() {
-        return SocketEventConstant.MOVE;
+        return SocketEventConstant.PLAYER_MOVE;
     }
 
     @Override
     public void handle(WebSocketSession session, Object payload) {
-        log.info("Handling MOVE event with payload: {}", payload);
+        log.info("Handling PLAYER_MOVE event with payload: {}", payload);
 
         playerStateRegistry.getPlayerId(payload).ifPresent(playerId -> {
             if (!playerStateRegistry.isSessionRegisteredForPlayer(session, playerId)) {
                 sendExistingPlayersToNewSession(session, playerId);
             }
-            playerStateRegistry.update(session, playerId, payload);
+            playerStateRegistry.applyMovement(session, payload).ifPresent(this::broadcastMovementState);
         });
     }
 
@@ -48,10 +49,10 @@ public class MoveEventHandler implements SocketEventHandler {
             return;
         }
 
-        for (Object existingState : playerStateRegistry.getStatesExcept(playerId)) {
+        for (PlayerMovementState existingState : playerStateRegistry.getStatesExcept(playerId)) {
             try {
                 SocketRequestDTO response = new SocketRequestDTO();
-                response.setEvent(SocketEventConstant.MOVE);
+                response.setEvent(SocketEventConstant.PLAYER_MOVE);
                 response.setPayload(existingState);
 
                 synchronized (session) {
@@ -61,6 +62,27 @@ public class MoveEventHandler implements SocketEventHandler {
                 log.error("Failed to send existing player state to playerId: {}", playerId, e);
                 return;
             }
+        }
+    }
+
+    private void broadcastMovementState(PlayerMovementState state) {
+        SocketRequestDTO response = new SocketRequestDTO();
+        response.setEvent(SocketEventConstant.PLAYER_MOVE);
+        response.setPayload(state);
+
+        try {
+            TextMessage message = new TextMessage(objectMapper.writeValueAsString(response));
+            for (WebSocketSession client : playerStateRegistry.getOpenSessions()) {
+                try {
+                    synchronized (client) {
+                        client.sendMessage(message);
+                    }
+                } catch (IOException e) {
+                    log.error("Failed to broadcast movement state for playerId: {}", state.getPlayerId(), e);
+                }
+            }
+        } catch (IOException e) {
+            log.error("Failed to encode movement state for playerId: {}", state.getPlayerId(), e);
         }
     }
 }
