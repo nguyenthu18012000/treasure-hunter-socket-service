@@ -35,6 +35,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionEstablished(@NonNull WebSocketSession session) {
         sessions.add(session);
+        playerStateRegistry.addSession(session);
     }
 
     @Override
@@ -51,23 +52,6 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         );
 
         dispatcher.dispatch(session, request);
-        broadcastToOthers(session, message);
-    }
-
-    private void broadcastToOthers(WebSocketSession sender, TextMessage message) {
-        for (WebSocketSession client : sessions) {
-            if (client == sender || !client.isOpen()) {
-                continue;
-            }
-
-            try {
-                synchronized (client) {
-                    client.sendMessage(message);
-                }
-            } catch (IOException ignored) {
-                sessions.remove(client);
-            }
-        }
     }
 
     private void broadcastPlayerLeave(String playerId) {
