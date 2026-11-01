@@ -23,15 +23,16 @@ public class SocketEventDispatcher {
                         SocketEventHandler::getEvent,
                         Function.identity()
                 ));
+        log.info("Registered socket event handlers: {}", handlerMap.keySet());
     }
 
     public void dispatch(WebSocketSession session, SocketRequestDTO request) {
-        log.info("Dispatching event: {}, payload: {}", request.getEvent(), request.getPayload());
-        log.info("Available handlers: {}", handlerMap.keySet());
+        log.debug("Dispatching event: {}, payload: {}", request.getEvent(), request.getPayload());
         SocketEventHandler handler = handlerMap.get(request.getEvent());
 
         if (handler == null) {
-            throw new RuntimeException("Unsupported event: " + request.getEvent());
+            log.warn("Ignored unsupported event '{}' from session {}", request.getEvent(), session.getId());
+            return;
         }
 
         handler.handle(session, request.getPayload());

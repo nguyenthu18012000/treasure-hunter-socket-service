@@ -1,30 +1,30 @@
 package com.treasurehunter.socket.event.handler.implement;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.treasurehunter.socket.constant.SocketEventConstant;
 import com.treasurehunter.socket.event.handler.SocketEventHandler;
-import com.treasurehunter.socket.model.movement.PlayerMovementState;
-import com.treasurehunter.socket.model.request.SocketRequestDTO;
+import com.treasurehunter.socket.model.movement.PlayerMovementInput;
 import com.treasurehunter.socket.state.PlayerStateRegistry;
+import com.treasurehunter.socket.websocket.SocketMessageSender;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.io.IOException;
+import java.util.Optional;
 
 @Slf4j
 @Component
 public class MoveEventHandler implements SocketEventHandler {
-    private final ObjectMapper objectMapper;
-    private final PlayerStateRegistry playerStateRegistry;
+    private static final CloseStatus REPLACED_BY_NEW_CONNECTION =
+            CloseStatus.POLICY_VIOLATION.withReason("Player connected from another session");
 
-    public MoveEventHandler(
-            ObjectMapper objectMapper,
-            PlayerStateRegistry playerStateRegistry
-    ) {
-        this.objectMapper = objectMapper;
+    private final PlayerStateRegistry playerStateRegistry;
+    private final SocketMessageSender messageSender;
+
+    public MoveEventHandler(PlayerStateRegistry playerStateRegistry, SocketMessageSender messageSender) {
         this.playerStateRegistry = playerStateRegistry;
+        this.messageSender = messageSender;
     }
 
     @Override
@@ -34,55 +34,39 @@ public class MoveEventHandler implements SocketEventHandler {
 
     @Override
     public void handle(WebSocketSession session, Object payload) {
-        log.info("Handling PLAYER_MOVE event with payload: {}", payload);
+        log.debug("Handling PLAYER_MOVE from session {}: {}", session.getId(), payload);
 
-        playerStateRegistry.getPlayerId(payload).ifPresent(playerId -> {
-            if (!playerStateRegistry.isSessionRegisteredForPlayer(session, playerId)) {
-                sendExistingPlayersToNewSession(session, playerId);
-            }
-            playerStateRegistry.applyMovement(session, payload).ifPresent(this::broadcastMovementState);
-        });
-    }
-
-    private void sendExistingPlayersToNewSession(WebSocketSession session, String playerId) {
-        if (!session.isOpen()) {
+        Optional<PlayerMovementInput> inputOptional = playerStateRegistry.readMovementInput(payload);
+        if (inputOptional.isEmpty()) {
             return;
         }
 
-        for (PlayerMovementState existingState : playerStateRegistry.getStatesExcept(playerId)) {
-            try {
-                SocketRequestDTO response = new SocketRequestDTO();
-                response.setEvent(SocketEventConstant.PLAYER_MOVE);
-                response.setPayload(existingState);
-
-                synchronized (session) {
-                    session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
-                }
-            } catch (IOException e) {
-                log.error("Failed to send existing player state to playerId: {}", playerId, e);
-                return;
-            }
+        PlayerMovementInput input = inputOptional.get();
+        Optional<String> playerIdOptional = playerStateRegistry.getPlayerId(input);
+        if (playerIdOptional.isEmpty()) {
+            log.warn("Ignored PLAYER_MOVE without playerId from session {}", session.getId());
+            return;
         }
+
+        String playerId = playerIdOptional.get();
+        PlayerStateRegistry.BindResult bind = playerStateRegistry.bindSession(session, playerId);
+        if (!bind.accepted()) {
+            log.warn("Ignored PLAYER_MOVE for playerId {}: session {} belongs to another player", playerId, session.getId());
+            return;
+        }
+        if (bind.replacedSession() != null) {
+            closeReplacedSession(bind.replacedSession());
+        }
+
+        playerStateRegistry.applyMovement(session, playerId, input)
+                .ifPresent(state -> messageSender.broadcast(SocketEventConstant.PLAYER_MOVE, state));
     }
 
-    private void broadcastMovementState(PlayerMovementState state) {
-        SocketRequestDTO response = new SocketRequestDTO();
-        response.setEvent(SocketEventConstant.PLAYER_MOVE);
-        response.setPayload(state);
-
+    private void closeReplacedSession(WebSocketSession oldSession) {
         try {
-            TextMessage message = new TextMessage(objectMapper.writeValueAsString(response));
-            for (WebSocketSession client : playerStateRegistry.getOpenSessions()) {
-                try {
-                    synchronized (client) {
-                        client.sendMessage(message);
-                    }
-                } catch (IOException e) {
-                    log.error("Failed to broadcast movement state for playerId: {}", state.getPlayerId(), e);
-                }
-            }
+            oldSession.close(REPLACED_BY_NEW_CONNECTION);
         } catch (IOException e) {
-            log.error("Failed to encode movement state for playerId: {}", state.getPlayerId(), e);
+            log.warn("Failed to close replaced session {}", oldSession.getId(), e);
         }
     }
 }
