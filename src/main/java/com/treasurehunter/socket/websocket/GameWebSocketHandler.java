@@ -3,9 +3,11 @@ package com.treasurehunter.socket.websocket;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.treasurehunter.socket.constant.SocketEventConstant;
 import com.treasurehunter.socket.event.dispatcher.SocketEventDispatcher;
+import com.treasurehunter.socket.kafka.CharacterPositionPublisher;
 import com.treasurehunter.socket.model.movement.PlayerMovementState;
 import com.treasurehunter.socket.model.request.SocketRequestDTO;
 import com.treasurehunter.socket.state.PlayerStateRegistry;
+import com.treasurehunter.socket.state.SpawnPositionResolver;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
@@ -22,17 +24,23 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     private final SocketEventDispatcher dispatcher;
     private final PlayerStateRegistry playerStateRegistry;
     private final SocketMessageSender messageSender;
+    private final CharacterPositionPublisher positionPublisher;
+    private final SpawnPositionResolver spawnPositionResolver;
 
     public GameWebSocketHandler(
             ObjectMapper objectMapper,
             SocketEventDispatcher dispatcher,
             PlayerStateRegistry playerStateRegistry,
-            SocketMessageSender messageSender
+            SocketMessageSender messageSender,
+            CharacterPositionPublisher positionPublisher,
+            SpawnPositionResolver spawnPositionResolver
     ) {
         this.objectMapper = objectMapper;
         this.dispatcher = dispatcher;
         this.playerStateRegistry = playerStateRegistry;
         this.messageSender = messageSender;
+        this.positionPublisher = positionPublisher;
+        this.spawnPositionResolver = spawnPositionResolver;
     }
 
     @Override
@@ -48,8 +56,11 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(@NonNull WebSocketSession session, @NonNull CloseStatus status) {
-        playerStateRegistry.removeBySession(session)
-                .ifPresent(playerId -> messageSender.broadcast(SocketEventConstant.PLAYER_LEAVE, playerId));
+        playerStateRegistry.removeBySession(session).ifPresent(lastPosition -> {
+            positionPublisher.publishOnDisconnect(lastPosition);
+            spawnPositionResolver.rememberLeave(lastPosition);
+            messageSender.broadcast(SocketEventConstant.PLAYER_LEAVE, lastPosition.playerId());
+        });
     }
 
     @Override

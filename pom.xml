@@ -63,7 +63,13 @@
 		<dependency>
 			<groupId>com.github.nguyenthu18012000</groupId>
 			<artifactId>treasure-hunter-common-lib</artifactId>
-			<version>1.0.11</version>
+			<version>1.0.12</version>
+		</dependency>
+
+		<!-- Kafka: cấu hình chung nằm trong common-lib -->
+		<dependency>
+			<groupId>org.springframework.kafka</groupId>
+			<artifactId>spring-kafka</artifactId>
 		</dependency>
 
 		<dependency>

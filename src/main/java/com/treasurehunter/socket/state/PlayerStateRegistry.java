@@ -100,7 +100,21 @@ public class PlayerStateRegistry {
         return BindResult.replaced(sessions.remove(previousSessionId));
     }
 
-    public Optional<PlayerMovementState> applyMovement(WebSocketSession session, String playerId, PlayerMovementInput input) {
+    /** true khi người chơi đã có trong world (ví dụ tải lại trang: session mới nhưng state vẫn còn). */
+    public boolean hasState(String playerId) {
+        return playerStates.containsKey(playerId);
+    }
+
+    /**
+     * @param spawnPosition vị trí xuất hiện, chỉ dùng khi người chơi chưa có trong world.
+     *                      null thì dùng điểm xuất hiện mặc định (giữa map).
+     */
+    public Optional<PlayerMovementState> applyMovement(
+            WebSocketSession session,
+            String playerId,
+            PlayerMovementInput input,
+            PlayerPosition spawnPosition
+    ) {
         if (!session.getId().equals(playerSessionIds.get(playerId))) {
             return Optional.empty();
         }
@@ -108,7 +122,7 @@ public class PlayerStateRegistry {
         long now = System.currentTimeMillis();
         PlayerMovementState currentState = playerStates.get(playerId);
         PlayerMovementState nextState = currentState == null
-                ? createInitialState(playerId, input, now)
+                ? createInitialState(playerId, input, spawnPosition, now)
                 : copyState(currentState);
 
         // First move the player with the velocity that was active since the previous input,
@@ -148,7 +162,7 @@ public class PlayerStateRegistry {
      * Removes a closed session. Returns the playerId only when this session still owned the player,
      * so a replaced session (page reload) does not remove the player from the world.
      */
-    public Optional<String> removeBySession(WebSocketSession session) {
+    public Optional<PlayerPosition> removeBySession(WebSocketSession session) {
         sessions.remove(session.getId());
 
         String playerId = sessionPlayers.remove(session.getId());
@@ -156,19 +170,49 @@ public class PlayerStateRegistry {
             return Optional.empty();
         }
 
-        playerStates.remove(playerId);
+        PlayerMovementState lastState = playerStates.remove(playerId);
         playerUpdateTimes.remove(playerId);
-        return Optional.of(playerId);
+        long now = System.currentTimeMillis();
+        return Optional.of(lastState == null
+                ? new PlayerPosition(playerId, null, null, now)
+                : positionAt(lastState, now));
     }
 
-    private PlayerMovementState createInitialState(String playerId, PlayerMovementInput input, long now) {
+    /** Vị trí hiện tại của mọi người chơi đang online, dùng để lưu định kỳ. */
+    public List<PlayerPosition> getCurrentPositions() {
+        long now = System.currentTimeMillis();
+        List<PlayerPosition> positions = new ArrayList<>();
+        playerStates.values().forEach(state -> positions.add(positionAt(state, now)));
+        return positions;
+    }
+
+    /**
+     * x/y trong state chỉ được cập nhật khi có input, nên người chơi đang đi thì x/y đã cũ.
+     * Tính vị trí ở thời điểm now giống cách applyMovement làm: đi tiếp theo vận tốc cuối,
+     * tối đa MAX_SERVER_DELTA_MS. Dùng serverTime của chính state để x/y và thời gian luôn khớp nhau.
+     */
+    private PlayerPosition positionAt(PlayerMovementState state, long now) {
+        double deltaSeconds = Math.min(Math.max(now - state.getServerTime(), 0L), MAX_SERVER_DELTA_MS) / 1000.0;
+        double x = clamp(state.getX() + state.getVx() * deltaSeconds, 0.0, WORLD_WIDTH);
+        double y = clamp(state.getY() + state.getVy() * deltaSeconds, 0.0, WORLD_HEIGHT);
+        return new PlayerPosition(state.getPlayerId(), x, y, now);
+    }
+
+    private PlayerMovementState createInitialState(
+            String playerId,
+            PlayerMovementInput input,
+            PlayerPosition spawnPosition,
+            long now
+    ) {
         PlayerMovementState state = new PlayerMovementState();
         state.setPlayerId(playerId);
         state.setId(playerId);
         state.setName(input.getName() == null || input.getName().isBlank() ? "Player " + playerId : input.getName());
         // Spawn position is decided by the server, never by the client.
-        state.setX(SPAWN_X);
-        state.setY(SPAWN_Y);
+        boolean hasSpawn = spawnPosition != null && spawnPosition.hasPosition()
+                && Double.isFinite(spawnPosition.x()) && Double.isFinite(spawnPosition.y());
+        state.setX(hasSpawn ? clamp(spawnPosition.x(), 0.0, WORLD_WIDTH) : SPAWN_X);
+        state.setY(hasSpawn ? clamp(spawnPosition.y(), 0.0, WORLD_HEIGHT) : SPAWN_Y);
         state.setAnimation("idle-right");
         state.setSequence(0L);
         state.setServerTime(now);

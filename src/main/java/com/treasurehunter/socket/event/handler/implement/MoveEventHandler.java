@@ -3,7 +3,9 @@ package com.treasurehunter.socket.event.handler.implement;
 import com.treasurehunter.socket.constant.SocketEventConstant;
 import com.treasurehunter.socket.event.handler.SocketEventHandler;
 import com.treasurehunter.socket.model.movement.PlayerMovementInput;
+import com.treasurehunter.socket.state.PlayerPosition;
 import com.treasurehunter.socket.state.PlayerStateRegistry;
+import com.treasurehunter.socket.state.SpawnPositionResolver;
 import com.treasurehunter.socket.websocket.SocketMessageSender;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -21,10 +23,16 @@ public class MoveEventHandler implements SocketEventHandler {
 
     private final PlayerStateRegistry playerStateRegistry;
     private final SocketMessageSender messageSender;
+    private final SpawnPositionResolver spawnPositionResolver;
 
-    public MoveEventHandler(PlayerStateRegistry playerStateRegistry, SocketMessageSender messageSender) {
+    public MoveEventHandler(
+            PlayerStateRegistry playerStateRegistry,
+            SocketMessageSender messageSender,
+            SpawnPositionResolver spawnPositionResolver
+    ) {
         this.playerStateRegistry = playerStateRegistry;
         this.messageSender = messageSender;
+        this.spawnPositionResolver = spawnPositionResolver;
     }
 
     @Override
@@ -58,7 +66,12 @@ public class MoveEventHandler implements SocketEventHandler {
             closeReplacedSession(bind.replacedSession());
         }
 
-        playerStateRegistry.applyMovement(session, playerId, input)
+        // Lần đầu người chơi vào world: lấy vị trí đã lưu để xuất hiện đúng chỗ lần trước.
+        PlayerPosition spawnPosition = playerStateRegistry.hasState(playerId)
+                ? null
+                : spawnPositionResolver.resolve(playerId).orElse(null);
+
+        playerStateRegistry.applyMovement(session, playerId, input, spawnPosition)
                 .ifPresent(state -> messageSender.broadcast(SocketEventConstant.PLAYER_MOVE, state));
     }
 

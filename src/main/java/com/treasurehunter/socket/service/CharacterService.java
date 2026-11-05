@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.UUID;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -21,6 +23,16 @@ public class CharacterService {
 
         BaseResponse<CharacterRuntimeResponseDTO> response = characterFeignClient.getCharacterState(userId);
         return unwrapCharacterRuntime(response, userId);
+    }
+
+    /** Lấy state đã lưu (vị trí...) theo id nhân vật. Dùng khi người chơi vào game. */
+    public CharacterRuntimeResponseDTO getCharacterRuntimeById(UUID characterId) {
+        if (characterId == null) {
+            throw new IllegalArgumentException("characterId is required");
+        }
+
+        BaseResponse<CharacterRuntimeResponseDTO> response = characterFeignClient.getCharacterStateById(characterId);
+        return unwrapCharacterRuntime(response, characterId);
     }
 
     public CharacterStatsInfoDTO getCharacterStats(Long userId) {
@@ -46,16 +58,16 @@ public class CharacterService {
 
     private CharacterRuntimeResponseDTO unwrapCharacterRuntime(
             BaseResponse<CharacterRuntimeResponseDTO> response,
-            Long userId
+            Object ownerId
     ) {
         if (response == null) {
-            throw new IllegalStateException("Empty response from character-service for userId: " + userId);
+            throw new IllegalStateException("Empty response from character-service for " + ownerId);
         }
 
         if (!CommonConstant.RESPONSE_CODE.SUCCESS.equals(response.getCode())) {
             log.warn(
-                    "Failed to get character runtime. userId: {}, code: {}, message: {}",
-                    userId,
+                    "Failed to get character runtime. id: {}, code: {}, message: {}",
+                    ownerId,
                     response.getCode(),
                     response.getMessage()
             );
@@ -64,7 +76,7 @@ public class CharacterService {
 
         CharacterRuntimeResponseDTO data = response.getData();
         if (data == null) {
-            throw new IllegalStateException("Character runtime not found for userId: " + userId);
+            throw new IllegalStateException("Character runtime not found for " + ownerId);
         }
 
         return data;

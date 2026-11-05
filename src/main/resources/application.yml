@@ -1,6 +1,12 @@
 spring:
   application:
     name: socket
+  kafka:
+    bootstrap-servers: localhost:9092   # Kafka chạy bằng docker compose trong treasure-hunter-infra
+    producer:
+      properties:
+        # Kafka không kết nối được thì send() chỉ chờ tối đa 3s (mặc định 60s), tránh treo luồng WebSocket
+        max.block.ms: 3000
   profiles:
     active: dev
 
@@ -12,8 +18,16 @@ app:
     path: /ws
     allowed-origins: "*"
 
+spring.cloud.openfeign.client.config.character-service:
+  # Gọi character-service lúc người chơi vào game: chờ lâu sẽ làm người chơi đứng yên, nên timeout ngắn
+  connect-timeout: 2000
+  read-timeout: 3000
+
 eureka:
   client:
     service-url:
       defaultZone: http://localhost:8761/eureka
 
+treasure-hunter:
+  position-save:
+    interval-ms: 5000   # chu kỳ gửi vị trí đã thay đổi sang character-service
