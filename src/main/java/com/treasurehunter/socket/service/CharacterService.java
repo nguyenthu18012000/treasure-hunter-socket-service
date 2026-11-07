@@ -2,13 +2,14 @@ package com.treasurehunter.socket.service;
 
 import com.TreasureHunter.CommonLib.constant.CommonConstant;
 import com.TreasureHunter.CommonLib.dto.response.character.CharacterRuntimeResponseDTO;
-import com.TreasureHunter.CommonLib.dto.response.character.CharacterStatsInfoDTO;
+import com.TreasureHunter.CommonLib.constant.StatKey;
 import com.TreasureHunter.CommonLib.response.BaseResponse;
 import com.TreasureHunter.CommonLib.service.CharacterFeignClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -35,9 +36,10 @@ public class CharacterService {
         return unwrapCharacterRuntime(response, characterId);
     }
 
-    public CharacterStatsInfoDTO getCharacterStats(Long userId) {
+    /** stat_key -> giá trị, xem StatKey. */
+    public Map<String, Double> getCharacterStats(Long userId) {
         CharacterRuntimeResponseDTO characterRuntime = getCharacterRuntime(userId);
-        CharacterStatsInfoDTO stats = characterRuntime.getStats();
+        Map<String, Double> stats = characterRuntime.getStats();
 
         if (stats == null) {
             throw new IllegalStateException("Character stats not found for userId: " + userId);
@@ -47,7 +49,7 @@ public class CharacterService {
     }
 
     public Double getCharacterSpeed(Long userId) {
-        Double speed = getCharacterStats(userId).getSpeed();
+        Double speed = getCharacterStats(userId).get(StatKey.SPEED);
 
         if (speed == null) {
             throw new IllegalStateException("Character speed not found for userId: " + userId);

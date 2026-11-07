@@ -63,7 +63,7 @@
 		<dependency>
 			<groupId>com.github.nguyenthu18012000</groupId>
 			<artifactId>treasure-hunter-common-lib</artifactId>
-			<version>1.0.12</version>
+			<version>1.0.13</version>
 		</dependency>
 
 		<!-- Kafka: cấu hình chung nằm trong common-lib -->
