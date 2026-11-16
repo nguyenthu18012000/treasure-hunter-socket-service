@@ -2,7 +2,7 @@ spring:
   application:
     name: socket
   kafka:
-    bootstrap-servers: localhost:9092   # Kafka chạy bằng docker compose trong treasure-hunter-infra
+    bootstrap-servers: localhost:9092   # Kafka chạy bằng docker compose trong infra
     producer:
       properties:
         # Kafka không kết nối được thì send() chỉ chờ tối đa 3s (mặc định 60s), tránh treo luồng WebSocket
@@ -28,6 +28,12 @@ eureka:
     service-url:
       defaultZone: http://localhost:8761/eureka
 
-treasure-hunter:
+game:
   position-save:
     interval-ms: 5000   # chu kỳ gửi vị trí đã thay đổi sang character-service
+  maps:
+    # Mỗi id đọc từ classpath:maps/{id}.json (Tiled JSON do game-ui/tools/generate-tilemap.mjs sinh, chạy npm run maps:sync).
+    # Liệt kê tường minh vì liệt kê thư mục classpath trong jar không đáng tin.
+    ids: village,meadow
+    # Map cho nhân vật mới, dữ liệu cũ (map_id null) hoặc map đã lưu không còn tồn tại.
+    default-map: village

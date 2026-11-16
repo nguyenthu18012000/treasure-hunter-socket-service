@@ -8,7 +8,7 @@
 		<version>3.5.0</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
-	<groupId>com.treasurehunter</groupId>
+	<groupId>com.game</groupId>
 	<artifactId>socket</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name/>
@@ -62,8 +62,8 @@
 
 		<dependency>
 			<groupId>com.github.nguyenthu18012000</groupId>
-			<artifactId>treasure-hunter-common-lib</artifactId>
-			<version>1.0.13</version>
+			<artifactId>common-lib</artifactId>
+			<version>1.0.14-SNAPSHOT</version>
 		</dependency>
 
 		<!-- Kafka: cấu hình chung nằm trong common-lib -->
@@ -80,6 +80,13 @@
 		<dependency>
 			<groupId>org.springframework.cloud</groupId>
 			<artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+		</dependency>
+
+		<!-- Unit test (JUnit 5, Mockito, AssertJ) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
 		</dependency>
 	</dependencies>
 
